@@ -38,12 +38,18 @@ For phones to open quote links, expose the server and set `PUBLIC_URL` (e.g. `ng
 
 After any code change, restart terminals 2 and 3 (a waiting room can hold old code).
 
+Only one computer can hold the line: `chert dev` on a second machine with the same account displaces the first. Agree which machine runs the demo.
+
+**Caller video on FaceTime:** Chert has not enabled caller-camera capture on the hackathon lines yet (the bridge publishes only `facetime-remote-audio`). The agent already subscribes to `facetime-remote-video`; until Chert enables it, a call with no video switches to voice (Quill asks for the brand and model number aloud). To show camera vision now, run `scripts/phone-link.sh`: it puts the agent in a LiveKit room and copies a link that opens a camera + mic call in a phone browser.
+
 ## `.env.local`
 
 | Key | Needed for | Where |
 |---|---|---|
 | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | the call | LiveKit Cloud → project → Settings → API keys (all three from one project) |
-| `OPENAI_API_KEY` | voice (Realtime) + vision | OpenAI key with Realtime access and credits |
+| `OPENAI_API_KEY` | voice (Realtime) | OpenAI key with Realtime access and credits. Empty = pipeline voice (below). A new account without billing stops at 50 Realtime sessions a day |
+| `ANTHROPIC_API_KEY` | vision + pipeline brain | Claude reads the camera when set; with `OPENAI_API_KEY` empty, Claude (`claude-opus-5-5`) also runs the conversation over LiveKit Inference speech (STT/TTS billed to the LiveKit project) |
+| `ELEVEN_API_KEY`, `ELEVEN_VOICE_ID` | optional | ElevenLabs voice for the pipeline mode |
 | `AGENT_NAME` | Chert routing | already `quote-agent`; must be unique across teams |
 | `CONTRACTOR_PHONE` | approve-link iMessage | teammate's iPhone, E.164 |
 | `HOMEOWNER_PHONE` | approved-quote iMessage | demo homeowner's iPhone (agent also asks on the call) |

@@ -5,6 +5,7 @@
 // send it to a vision model (OpenAI by default; any OpenAI-compatible endpoint via VISION_BASE_URL).
 import { RoomEvent, TrackKind, VideoBufferType, VideoStream } from '@livekit/rtc-node';
 import jpeg from 'jpeg-js';
+import Anthropic from '@anthropic-ai/sdk';
 
 export class CallerCamera {
   /** @param {import('@livekit/rtc-node').Room} room @param {string} callerIdentity */
@@ -17,15 +18,20 @@ export class CallerCamera {
     this.frames = 0;
     this._stopped = false;
     this._onSub = (track, _pub, participant) => {
+      console.log(`[media] subscribed kind=${track.kind} from=${participant?.identity}`);
       if (participant?.identity === this.identity && track.kind === TrackKind.KIND_VIDEO) this._consume(track);
     };
+    // Diagnostics: shows whether the Chert bridge ever publishes the caller's camera.
+    this._onPub = (pub, participant) => console.log(`[media] published kind=${pub.kind} source=${pub.source} from=${participant?.identity}`);
   }
 
   start() {
     this.room.on(RoomEvent.TrackSubscribed, this._onSub);
+    this.room.on(RoomEvent.TrackPublished, this._onPub);
     const p = this.room.remoteParticipants.get(this.identity);
     if (p) {
       for (const pub of p.trackPublications.values()) {
+        console.log(`[media] existing kind=${pub.kind} source=${pub.source} subscribed=${Boolean(pub.track)} from=${this.identity}`);
         if (pub.track && pub.track.kind === TrackKind.KIND_VIDEO) this._consume(pub.track);
       }
     }
@@ -34,6 +40,7 @@ export class CallerCamera {
   stop() {
     this._stopped = true;
     this.room.off(RoomEvent.TrackSubscribed, this._onSub);
+    this.room.off(RoomEvent.TrackPublished, this._onPub);
   }
 
   async _consume(track) {
@@ -98,8 +105,31 @@ function downscale({ data, width, height }, scale) {
   return { data: out, width: W, height: H };
 }
 
+const hasKey = k => Boolean(k) && !k.startsWith('YOUR_');
+let anthropic = null;
+
+/** Ask Claude about one image. */
+async function askClaude({ dataUrl, prompt, system }) {
+  anthropic ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 45000 });
+  const [, mediaType, data] = dataUrl.match(/^data:([^;]+);base64,(.*)$/s);
+  const response = await anthropic.messages.create({
+    model: process.env.CLAUDE_VISION_MODEL || 'claude-opus-5-5',
+    max_tokens: 16000,
+    output_config: { effort: process.env.VISION_EFFORT || 'low' },
+    ...(system ? { system } : {}),
+    messages: [{ role: 'user', content: [
+      { type: 'image', source: { type: 'base64', media_type: mediaType, data } },
+      { type: 'text', text: prompt },
+    ] }],
+  });
+  if (response.stop_reason === 'refusal') throw new Error('Vision request was declined');
+  return response.content.filter(b => b.type === 'text').map(b => b.text).join('');
+}
+
 /** Ask a vision model about one image. Returns the model's text. */
 export async function askVision({ dataUrl, prompt, system }) {
+  // Claude when ANTHROPIC_API_KEY is set (unless an OpenAI-compatible VISION_BASE_URL is chosen).
+  if (hasKey(process.env.ANTHROPIC_API_KEY) && !process.env.VISION_BASE_URL) return askClaude({ dataUrl, prompt, system });
   const base = (process.env.VISION_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
   const key = process.env.VISION_API_KEY || process.env.OPENAI_API_KEY;
   const model = process.env.VISION_MODEL || 'gpt-5-mini';

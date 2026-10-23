@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { AutoSubscribe, cli, defineAgent, llm, ServerOptions, voice } from '@livekit/agents';
 import { realtime } from '@livekit/agents-plugin-openai';
+import * as elevenlabs from '@livekit/agents-plugin-elevenlabs';
+import * as anthropic from '@livekit/agents-plugin-anthropic';
 import { LocalVideoTrack, TrackSource, VideoBufferType, VideoFrame, VideoSource } from '@livekit/rtc-node';
 import { drawFace, FPS, HEIGHT, WIDTH } from './face.mjs';
 import { greetOnBridgeReady } from './greet.mjs';
@@ -17,6 +19,8 @@ const book = loadPricebook();
 const JOB_KEYS = Object.keys(book.jobs);
 const AGENT_PERSONA = 'Quill';
 const QUOTE_SERVER_URL = (process.env.QUOTE_SERVER_URL || 'http://localhost:3000').replace(/\/$/, '');
+const hasKey = k => Boolean(k) && !k.startsWith('YOUR_');
+const useRealtime = hasKey(process.env.OPENAI_API_KEY);
 
 const instructions = `You are "${AGENT_PERSONA}", an AI plumbing estimator on a FaceTime video call for ${book.contractor.name}. Be clear that you are an AI.
 You can SEE through the homeowner's camera only by calling tools (look_at_camera, read_label). Never claim to see something you did not get from a tool.
@@ -31,6 +35,8 @@ Flow:
 6. Call build_quote with the best matching job_type, the part name, and the price and source_url from the search's best result. If the search found no price, omit part_price and part_source_url. Never do arithmetic yourself; read the total the tool returns.
 7. Tell them the total in one sentence and that each line has a receipt they can check on the link. If you do not have their mobile number, ask for the best number to text the final quote to, then call set_homeowner_phone with it in E.164 form (+1...).
 8. Call send_to_contractor. Tell them ${book.contractor.name} will review and approve it and they will get a text with the final quote. Say goodbye warmly.
+
+If a camera tool returns error no_video_stream, switch to voice for the rest of the call: have the homeowner describe the fixture and read the brand and model number aloud, then continue from step 5.
 
 Rules: never invent prices, brands or model numbers; if a tool returns ok=false, tell the homeowner what to do (hold steady, more light, closer) and try once more; if the homeowner asks for something outside plumbing, say you only handle plumbing today.`;
 
@@ -91,6 +97,12 @@ export default defineAgent({
     }
     const fail = (error, advice) => ({ ok: false, error, advice });
     const NO_VIDEO = 'No video from the caller yet. Ask them to point the camera at the problem, hold steady for two seconds, and try again.';
+    // No caller video at all on this call (e.g. the line's bridge forwards audio only): continue by voice.
+    const NO_STREAM = "No video is reaching you on this call, so do not call look_at_camera or read_label again. Ask the homeowner to describe the fixture and read the brand and model number aloud, then continue with search_part_price and build_quote using what they said.";
+    const noVideo = async () => {
+      if (camera.frames === 0) { await trace('vision', 'No caller video on this call; continuing by voice'); setStatus('SAY MODEL NUMBER'); return fail('no_video_stream', NO_STREAM); }
+      setStatus('NEED CAMERA'); return fail('no_video', NO_VIDEO);
+    };
 
     ensureQuote();
 
@@ -102,7 +114,7 @@ export default defineAgent({
         execute: async ({ homeowner_description }) => {
           try {
             setStatus('LOOKING...');
-            if (!camera.hasFrame) { await trace('vision', `No camera frame (frames so far: ${camera.frames})`); setStatus('NEED CAMERA'); return fail('no_video', NO_VIDEO); }
+            if (!camera.hasFrame) return noVideo();
             const snap = await captureSnapshot('Fixture');
             const text = await askVision({ dataUrl: snap.dataUrl, prompt: IDENTIFY_PROMPT(homeowner_description, JOB_KEYS) });
             const result = parseJson(text) || { fixture: 'unclear', visible_problem: text.slice(0, 200), confidence: 0.2, safety_flags: [], mismatch: false };
@@ -124,7 +136,7 @@ export default defineAgent({
         execute: async () => {
           try {
             setStatus('READING LABEL...');
-            if (!camera.hasFrame) { setStatus('NEED CAMERA'); return fail('no_video', NO_VIDEO); }
+            if (!camera.hasFrame) return noVideo();
             const snap = await captureSnapshot('Model label');
             const text = await askVision({ dataUrl: snap.dataUrl, prompt: LABEL_PROMPT });
             const result = parseJson(text) || { readable: false, brand: null, model_number: null, advice: 'Hold the label closer and still.', confidence: 0 };
@@ -240,10 +252,20 @@ export default defineAgent({
       }),
     };
 
-    // ---- Realtime session ----
-    const session = new voice.AgentSession({
-      llm: new realtime.RealtimeModel({ model: process.env.REALTIME_MODEL || 'gpt-realtime', voice: process.env.REALTIME_VOICE || 'marin' }),
-    });
+    // ---- Voice session ----
+    // With an OpenAI key: one speech-to-speech Realtime model. Without one: a pipeline on LiveKit
+    // Inference (billed to the LiveKit project), STT -> LLM -> TTS, no extra provider keys.
+    const session = new voice.AgentSession(useRealtime
+      ? { llm: new realtime.RealtimeModel({ model: process.env.REALTIME_MODEL || 'gpt-realtime', voice: process.env.REALTIME_VOICE || 'marin' }) }
+      : {
+          stt: process.env.STT_MODEL || 'deepgram/nova-3',
+          llm: hasKey(process.env.ANTHROPIC_API_KEY) && !process.env.LLM_MODEL
+            ? new anthropic.LLM({ model: process.env.CLAUDE_LLM_MODEL || 'claude-opus-5-5' })
+            : process.env.LLM_MODEL || 'openai/gpt-4.1-mini',
+          tts: hasKey(process.env.ELEVEN_API_KEY)
+            ? new elevenlabs.TTS({ voiceId: process.env.ELEVEN_VOICE_ID || undefined, model: process.env.ELEVEN_MODEL || 'eleven_flash_v2_5' })
+            : process.env.TTS_MODEL || 'cartesia/sonic-3:9626c31c-bec5-4cca-baa8-f8ba9e84c8bc',
+        });
     session.on(voice.AgentSessionEventTypes.AgentStateChanged, event => { speaking = event.newState === 'speaking'; });
 
     ctx.addShutdownCallback(async () => {
