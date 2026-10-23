@@ -1,0 +1,88 @@
+{
+  "trade": "plumbing",
+  "currency": "USD",
+  "contractor": {
+    "name": "Demo Plumbing Co.",
+    "hourly_rate": 125,
+    "trip_fee": 49,
+    "parts_markup_pct": 20,
+    "tax_pct": 0
+  },
+  "jobs": {
+    "faucet_cartridge_replace": {
+      "label": "Replace single-handle faucet cartridge",
+      "hours": 0.75,
+      "default_part": { "name": "Faucet cartridge (generic)", "price": 32.0 }
+    },
+    "faucet_aerator_replace": {
+      "label": "Replace faucet aerator",
+      "hours": 0.25,
+      "default_part": { "name": "Faucet aerator", "price": 8.0 }
+    },
+    "faucet_replace": {
+      "label": "Replace kitchen or bathroom faucet",
+      "hours": 1.5,
+      "default_part": { "name": "Faucet (mid-range)", "price": 160.0 }
+    },
+    "shower_cartridge_replace": {
+      "label": "Replace shower/tub valve cartridge",
+      "hours": 1.25,
+      "default_part": { "name": "Shower valve cartridge", "price": 45.0 }
+    },
+    "toilet_flapper_replace": {
+      "label": "Replace toilet flapper",
+      "hours": 0.5,
+      "default_part": { "name": "Toilet flapper", "price": 12.0 }
+    },
+    "toilet_fill_valve_replace": {
+      "label": "Replace toilet fill valve",
+      "hours": 0.75,
+      "default_part": { "name": "Toilet fill valve", "price": 18.0 }
+    },
+    "toilet_wax_ring_reset": {
+      "label": "Reset toilet with new wax ring",
+      "hours": 1.25,
+      "default_part": { "name": "Wax ring + bolts kit", "price": 14.0 }
+    },
+    "toilet_replace": {
+      "label": "Replace toilet",
+      "hours": 2.0,
+      "default_part": { "name": "Toilet (standard)", "price": 220.0 }
+    },
+    "p_trap_replace": {
+      "label": "Replace sink P-trap",
+      "hours": 0.75,
+      "default_part": { "name": "P-trap kit", "price": 15.0 }
+    },
+    "supply_line_replace": {
+      "label": "Replace supply line",
+      "hours": 0.5,
+      "default_part": { "name": "Braided supply line", "price": 12.0 }
+    },
+    "angle_stop_replace": {
+      "label": "Replace angle stop (shut-off valve)",
+      "hours": 0.75,
+      "default_part": { "name": "Quarter-turn angle stop", "price": 16.0 }
+    },
+    "garbage_disposal_replace": {
+      "label": "Replace garbage disposal",
+      "hours": 1.5,
+      "default_part": { "name": "Garbage disposal 1/2 HP", "price": 130.0 }
+    },
+    "drain_clear": {
+      "label": "Clear clogged drain",
+      "hours": 1.0,
+      "default_part": null
+    },
+    "water_heater_tp_valve_replace": {
+      "label": "Replace water heater T&P relief valve",
+      "hours": 1.0,
+      "default_part": { "name": "T&P relief valve", "price": 28.0 }
+    },
+    "diagnostic_only": {
+      "label": "On-site diagnostic visit",
+      "hours": 0.5,
+      "default_part": null
+    }
+  }
+}
